@@ -8,7 +8,11 @@ class FineTunedModel(nn.Module):
         super(FineTunedModel, self).__init__()
         self.model = model
         self.transformer = transformer
-        self.mlp = nn.Linear(constants.label_dim, 1)
+        self.mlp = nn.Sequential(
+            nn.Linear(constants.label_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, 1),
+            nn.Sigmoid()
 
     def forward(self, x):
         model_output = self.model(x)

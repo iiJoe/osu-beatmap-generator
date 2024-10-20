@@ -22,7 +22,7 @@ def train():
 
     ast_mdl = ASTModel(label_dim=constants.label_dim, audioset_pretrain=True)
     fine_tuned_model = FineTunedModel(ast_mdl, fast_transformer)
-    criterion = nn.BCEWithLogitsLoss() # Applies sigmoid internally
+    criterion = nn.BCELoss()
     optimizer = torch.optim.Adam(fine_tuned_model.parameters(), lr=0.0001)
 
     num_epochs = 10
@@ -41,6 +41,6 @@ def train():
 
         print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(data_loader):.4f}')
 
-        torch.save(fine_tuned_model.state_dict(),     "ast/pretrained_models/trained_model.pth")
+        torch.save(fine_tuned_model.state_dict(), "../pretrained_models/trained_model.pth")
 
 train()

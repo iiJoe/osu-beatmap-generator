@@ -59,7 +59,7 @@ def hit_objects_dict(list):
 
 # 10.24s intervals
 def splice_audio(file_path, beatmap_id, interval_ms=10240):
-    directory, file_name = os.path.split(file_path)
+    _, file_name = os.path.split(file_path)
     prefix, file_extension = os.path.splitext(file_name)
     file_extension = file_extension[1:] # Remove leading dot
     new_directory = constants.splice_directory
