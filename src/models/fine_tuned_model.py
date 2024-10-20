@@ -13,6 +13,8 @@ class FineTunedModel(nn.Module):
             nn.ReLU(),
             nn.Linear(256, 1),
             nn.Sigmoid()
+        )
+
 
     def forward(self, x):
         model_output = self.model(x)
