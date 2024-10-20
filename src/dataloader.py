@@ -28,7 +28,6 @@ def pad_tensor(tensor, target_shape=(1024, 128)):
         return tensor
 
     padding_height = target_shape[0] - current_shape[0]
-    padding_width = target_shape[1] - current_shape[1]
 
     if padding_height > 0:
         tensor = F.pad(tensor, (0, 0, 0, padding_height), mode='constant', value=0)
