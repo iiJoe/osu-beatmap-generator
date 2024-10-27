@@ -4,6 +4,7 @@ import torch, torch.nn as nn
 from torch.utils.data import DataLoader
 
 import constants
+from models.fast_transformers import fast_transformer
 from models.ast_model import ASTModel
 from models.fine_tuned_model import FineTunedModel
 
@@ -20,7 +21,7 @@ def train():
     data_loader = DataLoader(dataset, batch_size=len(file_paths), shuffle=True)
 
     ast_mdl = ASTModel(label_dim=constants.label_dim, audioset_pretrain=True)
-    fine_tuned_model = FineTunedModel(ast_mdl)
+    fine_tuned_model = FineTunedModel(ast_mdl, fast_transformer)
     criterion = nn.BCEWithLogitsLoss() # Applies sigmoid internally
     optimizer = torch.optim.Adam(fine_tuned_model.parameters(), lr=0.0001)
 
