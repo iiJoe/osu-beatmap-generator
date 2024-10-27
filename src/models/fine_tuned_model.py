@@ -1,6 +1,5 @@
-import torch, torch.nn as nn
+import torch.nn as nn
 import constants
-import fast_transformers
 
 class FineTunedModel(nn.Module):
 
