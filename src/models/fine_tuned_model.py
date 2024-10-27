@@ -20,4 +20,4 @@ class FineTunedModel(nn.Module):
         model_output = self.model(x)
         transformer_output = self.transformer(model_output)
         mlp_output = self.mlp(transformer_output)
-        return mlp_output.squeeze(-1)
+        return mlp_output
