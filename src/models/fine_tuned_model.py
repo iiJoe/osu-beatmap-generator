@@ -15,7 +15,6 @@ class FineTunedModel(nn.Module):
             nn.Sigmoid()
         )
 
-
     def forward(self, x):
         model_output = self.model(x)
         transformer_output = self.transformer(model_output)
