@@ -5,3 +5,4 @@
 + pip install pydub
 + pip install numpy
 + pip install librosa
++ pip install transformers

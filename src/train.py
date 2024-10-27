@@ -4,8 +4,8 @@ import torch, torch.nn as nn
 from torch.utils.data import DataLoader
 
 import constants
+from transformers import ASTModel
 from models.fast_transformers import fast_transformer
-from models.ast_model import ASTModel
 from models.fine_tuned_model import FineTunedModel
 
 def labels_from_csv(csv_file):
@@ -20,7 +20,7 @@ def train():
     dataset = AudioDataset(file_paths, labels)
     data_loader = DataLoader(dataset, batch_size=len(file_paths), shuffle=True)
 
-    ast_mdl = ASTModel(label_dim=constants.label_dim, audioset_pretrain=True)
+    ast_mdl = ASTModel.from_pretrained("MIT/ast-finetuned-audioset-10-10-0.4593", num_labels=constants.label_dim)
     fine_tuned_model = FineTunedModel(ast_mdl, fast_transformer)
     criterion = nn.BCELoss()
     optimizer = torch.optim.Adam(fine_tuned_model.parameters(), lr=0.0001)
