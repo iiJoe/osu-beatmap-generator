@@ -1,11 +1,12 @@
-import torch, torch.nn as nn
+import torch.nn as nn
 import constants
 
 class FineTunedModel(nn.Module):
 
-    def __init__(self, model):
+    def __init__(self, model, transformer):
         super(FineTunedModel, self).__init__()
         self.model = model
+        self.transformer = transformer
         self.mlp = nn.Sequential(
             nn.Linear(constants.label_dim, 256),
             nn.ReLU(),
@@ -15,5 +16,6 @@ class FineTunedModel(nn.Module):
 
     def forward(self, x):
         model_output = self.model(x)
-        mlp_output = self.mlp(model_output)
-        return mlp_output.squeeze(-1)
+        transformer_output = self.transformer(model_output)
+        mlp_output = self.mlp(transformer_output)
+        return mlp_output
