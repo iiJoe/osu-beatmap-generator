@@ -41,6 +41,6 @@ def train():
 
         print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(data_loader):.4f}')
 
-        torch.save(fine_tuned_model.state_dict(),     "ast/pretrained_models/trained_model.pth")
+        torch.save(fine_tuned_model.state_dict(), "../pretrained_models/trained_model.pth")
 
 train()
