@@ -15,7 +15,7 @@ class FineTunedModel(nn.Module):
         )
 
     def forward(self, x):
-        model_output = self.model(x).last_hidden_state
+        model_output = self.model(x).last_hidden_state[:, 2:, :]
         transformer_output = self.transformer(model_output)
         mlp_output = self.mlp(transformer_output)
         return mlp_output

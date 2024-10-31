@@ -84,11 +84,14 @@ def preprocess():
     osu_folders = [name for name in os.listdir(constants.beatmaps_directory) if os.path.isdir(os.path.join(constants.beatmaps_directory, name))]
 
     # Clearing the labels file to ensure no duplicates of data
-    with open(constants.labels_file, 'w') as file:
+    with open(constants.training_labels_file, 'w') as file:
+        pass
+    with open(constants.test_labels_file, 'w') as file:
         pass
 
     beatmaps_count = 0
     splices_count = 0
+    total_rows = []
     for beatmap_set_id in osu_folders:
 
         new_directory = constants.beatmaps_directory + '/' + beatmap_set_id
@@ -118,9 +121,18 @@ def preprocess():
             hit_timings[timing // 10240][(timing % 10240) // 10] = "1"
           prepended_paths = np.array(spliced_audio_paths).reshape(-1, 1)
           rows = np.concatenate((prepended_paths, hit_timings), axis=1)
-          with open(constants.labels_file, "ab") as file:
-            np.savetxt(file, rows, delimiter=",", fmt="%s")
+          total_rows.append(rows)
+
+    total_rows = np.vstack(total_rows)
+    shape = total_rows.shape[0]
+    train_rows, test_rows = np.split(total_rows[np.random.permutation(shape)], [int(0.8 * shape)])
+
+    with open(constants.training_labels_file, "ab") as file:
+        np.savetxt(file, train_rows, delimiter=",", fmt="%s")
+    with open(constants.test_labels_file, "ab") as file:
+        np.savetxt(file, test_rows, delimiter=",", fmt="%s")
 
     print(f"Processed {beatmaps_count} beatmaps with {splices_count} splices of audio")
+    print(f"Split dataset into {train_rows.shape[0]} splices for training and {test_rows.shape[0]} splices for test")
 
 preprocess()
