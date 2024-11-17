@@ -58,13 +58,13 @@ def hit_objects_dict(list):
   return hit_objects
 
 # 10.24s intervals
-def splice_audio(file_path, beatmap_id, interval_ms=10240):
+def splice_audio(file_path, beatmap_id, interval_ms=constants.seq_length * 10):
     _, file_name = os.path.split(file_path)
     prefix, file_extension = os.path.splitext(file_name)
     file_extension = file_extension[1:] # Remove leading dot
     new_directory = constants.splice_directory
 
-    if os.path.exists(new_directory) == False:
+    if not os.path.exists(new_directory):
       os.mkdir(new_directory)
 
     audio = AudioSegment.from_file(file_path)
@@ -116,9 +116,10 @@ def preprocess():
 
           # Beat timings
           hit_timings_data = [int(hit_object["time"]) for hit_object in hit_objects_data]
-          hit_timings = np.full((len(spliced_audio_paths), 1024), "0", dtype=str)
+          hit_timings = np.full((len(spliced_audio_paths), constants.seq_length), "0", dtype=str)
+          hit_timing_delimiter = constants.seq_length * 10
           for timing in hit_timings_data:
-            hit_timings[timing // 10240][(timing % 10240) // 10] = "1"
+            hit_timings[timing // hit_timing_delimiter][(timing % hit_timing_delimiter) // 10] = "1"
           prepended_paths = np.array(spliced_audio_paths).reshape(-1, 1)
           rows = np.concatenate((prepended_paths, hit_timings), axis=1)
           total_rows.append(rows)

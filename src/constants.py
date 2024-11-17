@@ -1,4 +1,5 @@
-label_dim = 768
+seq_length = 1024
+label_dim = 128
 training_labels_file = "../input/training-layers.csv"
 test_labels_file = "../input/test-layers.csv"
 osu_keys = ["x", "y", "time", "type", "hitSound", "objectParams", "hitSample"]

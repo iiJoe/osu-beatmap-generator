@@ -1,7 +1,9 @@
 import numpy as np
-from models.ast_model import ast_mdl
+
 from models.fast_transformers import fast_transformer
 from models.fine_tuned_model import FineTunedModel
+from models.pos_embed import PositionalEncoding
+import constants
 
 def labels_from_csv(csv_file):
     data = np.genfromtxt(csv_file, delimiter=",", dtype=str, encoding='utf-8')
@@ -12,5 +14,6 @@ def labels_from_csv(csv_file):
 
 def get_model():
     # TODO check if state exists, load if so
-    fine_tuned_model = FineTunedModel(ast_mdl, fast_transformer)
+    pos_embed = PositionalEncoding(constants.seq_length, 128)
+    fine_tuned_model = FineTunedModel(pos_embed, fast_transformer)
     return fine_tuned_model

@@ -3,19 +3,19 @@ import constants
 
 class FineTunedModel(nn.Module):
 
-    def __init__(self, model, transformer):
+    def __init__(self, pos_embed, transformer):
         super(FineTunedModel, self).__init__()
-        self.model = model
+        self.pos_embed = pos_embed
         self.transformer = transformer
         self.mlp = nn.Sequential(
-            nn.Linear(constants.label_dim, 256),
+            nn.Linear(constants.label_dim, 64),
             nn.ReLU(),
-            nn.Linear(256, 1),
+            nn.Linear(64, 1),
             nn.Sigmoid()
         )
 
     def forward(self, x):
-        model_output = self.model(x).last_hidden_state[:, 2:, :]
-        transformer_output = self.transformer(model_output)
+        pos_embed_output = self.pos_embed(x)
+        transformer_output = self.transformer(pos_embed_output)
         mlp_output = self.mlp(transformer_output)
         return mlp_output

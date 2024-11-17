@@ -1,3 +1,4 @@
+import os
 from dataloader import AudioDataset
 import torch, torch.nn as nn
 from torch.utils.data import DataLoader
@@ -8,12 +9,15 @@ from utils import labels_from_csv, get_model
 
 def eval():
     model = get_model()
-    model.load_state_dict(torch.load(constants.trained_model_path))
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+   if not os.path.exists(constants.trained_model_path):
+       raise FileNotFoundError(f"The trained model should be placed at {constants.trained_model_path}")
+   model.load_state_dict(torch.load(constants.trained_model_path, map_location=device))
     model.eval()
 
     file_paths, labels = labels_from_csv(constants.test_labels_file)
     dataset = AudioDataset(file_paths, labels)
-    data_loader = DataLoader(dataset, batch_size=len(file_paths), shuffle=True)
+    data_loader = DataLoader(dataset, batch_size=len(file_paths), shuffle=True, pin_memory=True)
 
     test_loss = 0
     all_preds, all_labels = [], []
@@ -21,17 +25,9 @@ def eval():
 
     # Evaluation
     with torch.no_grad():
-
-        is_cuda = torch.cuda.is_available()
-        if is_cuda:
-            print("CUDA is available")
-            model.cuda()
-
-        print("=== Evaluation Begin ===")
+        print("=== Evaluation Start ===")
         for data, labels in data_loader:
-            if is_cuda:
-                data, labels = data.cuda(), labels.cuda()
-
+            data, labels = data.to(device, non_blocking=True), labels.to(device, non_blocking=True)
             logits = model(data)
 
             loss = criterion(logits, labels.float())
@@ -56,6 +52,6 @@ def eval():
     print(f"Recall: {recall:.4f}")
     print(f"F1 Score: {f1:.4f}")
     print(f"AUC-ROC: {roc_auc:.4f}")
-    print("=== Evaluation Begin ===")
+    print("=== Evaluation End ===")
 
 eval()
