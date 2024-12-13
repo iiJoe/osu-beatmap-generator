@@ -18,4 +18,5 @@ class FineTunedModel(nn.Module):
         pos_embed_output = self.pos_embed(x)
         transformer_output = self.transformer(pos_embed_output)
         mlp_output = self.mlp(transformer_output)
-        return mlp_output
+        output = mlp_output.squeeze(-1)
+        return output

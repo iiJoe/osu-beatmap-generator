@@ -6,6 +6,5 @@ fast_transformer = TransformerEncoderBuilder.from_kwargs(
     query_dimensions=16,
     value_dimensions=16,
     feed_forward_dimensions=512,
-    attention_type="full"
+    attention_type="linear"
 ).get()
-
