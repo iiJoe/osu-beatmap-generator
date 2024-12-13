@@ -1,5 +1,10 @@
-label_dim = 768
-labels_file = "../input/layers.csv"
+seq_length = 1024
+label_dim = 128
+batch_size = 4000
+label_weight = 25
+training_labels_file = "../input/training-layers.csv"
+test_labels_file = "../input/test-layers.csv"
+trained_model_path = "../pretrained_models/trained_model.pth"
 osu_keys = ["x", "y", "time", "type", "hitSound", "objectParams", "hitSample"]
 beatmaps_directory = '../input/beatmaps' # Store beatmaps into this directory
 splice_directory = '../input/splices' # Store beatmaps into this directory
