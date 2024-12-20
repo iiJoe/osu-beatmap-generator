@@ -8,7 +8,7 @@ class FineTunedModel(nn.Module):
         self.pos_embed = pos_embed
         self.transformer = transformer
         self.mlp = nn.Sequential(
-            nn.Linear(constants.label_dim, 64),
+            nn.Linear(constants.input_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 1),
             nn.Sigmoid()

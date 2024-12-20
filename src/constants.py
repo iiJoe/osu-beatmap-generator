@@ -1,5 +1,7 @@
 seq_length = 1024
-label_dim = 128
+input_dim = 128
+cnn_output_dim = 256
+predictions_dim = 6 # [exists, x, y, time, type, hitSound]
 batch_size = 4000
 label_weight = 25
 json_file_path_key = "file_path"
