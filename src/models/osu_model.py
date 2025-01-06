@@ -2,7 +2,7 @@ import constants
 import torch
 import torch.nn as nn
 
-from models.positional_encoding import PositionalEncoding
+from .positional_encoding import PositionalEncoding
 
 class OsuModel(nn.Module):
 
@@ -19,40 +19,43 @@ class OsuModel(nn.Module):
             nn.Conv1d(output_dim, output_dim, kernel_size=3, padding=1)
         )
 
-        self.encoder_positional_encoding = PositionalEncoding(output_dim, dropout, max_seq_len)
+        self.positional_encoding = PositionalEncoding(output_dim, dropout, max_seq_len)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=output_dim,
             nhead=nhead,
+            batch_first=True,
             dim_feedforward=dim_feedforward,
             dropout=dropout
         )
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_encoder_layers)
 
-        self.note_embedding = nn.Linear(constants.predictions_dim, output_dim)
-        self.decoder_positional_encoding = PositionalEncoding(output_dim, dropout, max_seq_len)
+        self.note_embedding = nn.Linear(constants.predictions_dim, output_dim, dtype=torch.float32)
 
         decoder_layer = nn.TransformerDecoderLayer(
             d_model=output_dim,
             nhead=nhead,
+            batch_first=True,
             dim_feedforward=dim_feedforward,
             dropout=dropout
         )
         self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_decoder_layers)
-        self.out = nn.Linear(output_dim, constants.predictions_dim)
+        self.out = nn.Linear(output_dim, constants.predictions_dim, dtype=torch.float32)
 
     def forward(self, src, tgt, src_mask=None, tgt_mask=None, memory_mask=None):
-        src = self.cnn_encoder(src.permute(0, 2, 1))
-        src = src.permute(2, 0, 1)
-        src = self.encoder_positional_encoding(src)
-        memory = self.transformer_encoder(src, src_key_padding_mask=src_mask)
+        src = src.permute(0, 2, 1)
+        src = self.cnn_encoder(src)
+        src = src.permute(0, 2, 1)
+        src = self.positional_encoding(src)
+        memory = self.transformer_encoder(src, mask=src_mask)
 
         tgt = self.note_embedding(tgt)
-        tgt = tgt.permute(1, 0, 2)
-        tgt = self.decoder_positional_encoding(tgt)
+        tgt = self.positional_encoding(tgt)
 
         output = self.transformer_decoder(tgt, memory, tgt_mask=tgt_mask, memory_mask=memory_mask)
         output = self.out(output)
-        output = output.permute(1, 0, 2)
+        exists_output = torch.sigmoid(output[:, :, 0]).unsqueeze(-1)
+        tail_output = output[:, :, 1:]
+        output = torch.cat([exists_output, tail_output], dim=-1)
 
         return output

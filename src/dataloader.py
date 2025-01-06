@@ -14,14 +14,12 @@ def audio_to_spectrogram_tensor(audio_file):
   spectrogram = S_db[:128, :1024].T
 
   spectrogram_tensor = torch.tensor(spectrogram, dtype=torch.float32)
-  padded_tensor = pad_tensor(spectrogram_tensor)
+  padded_tensor = pad_spectrogram_tensor(spectrogram_tensor)
   normalized_tensor = normalize_tensor(padded_tensor)
 
   return normalized_tensor
 
-
-
-def pad_tensor(tensor, target_shape=(1024, 128)):
+def pad_spectrogram_tensor(tensor, target_shape=(1024, 128)):
     current_shape = tensor.shape
 
     if current_shape == target_shape:
@@ -51,8 +49,7 @@ class AudioDataset(Dataset):
 
     def __getitem__(self, idx):
         spectrogram = audio_to_spectrogram_tensor(self.file_paths[idx])
-        padded_spectrogram = pad_tensor(spectrogram)
-        normalized_spectrogram = normalize_tensor(padded_spectrogram)
+        normalized_spectrogram = normalize_tensor(spectrogram)
 
         label = self.labels[idx]
         return normalized_spectrogram, label

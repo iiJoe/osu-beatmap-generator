@@ -87,6 +87,9 @@ def preprocess():
     beatmaps_count = 0
     splices_count = 0
     total_rows = []
+    if not osu_folders:
+        print("No beatmap folders found.")
+
     for beatmap_set_id in osu_folders:
 
         new_directory = constants.beatmaps_directory + '/' + beatmap_set_id
