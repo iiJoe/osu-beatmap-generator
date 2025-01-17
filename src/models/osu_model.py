@@ -40,7 +40,10 @@ class OsuModel(nn.Module):
             dropout=dropout
         )
         self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_decoder_layers)
-        self.out = nn.Linear(output_dim, constants.predictions_dim, dtype=torch.float32)
+        self.out = nn.Sequential(
+            nn.Linear(output_dim, constants.predictions_dim, dtype=torch.float32),
+            nn.Sigmoid()
+        )
 
     def forward(self, src, tgt, src_mask=None, tgt_mask=None, memory_mask=None):
         src = src.permute(0, 2, 1)
@@ -52,10 +55,7 @@ class OsuModel(nn.Module):
         tgt = self.note_embedding(tgt)
         tgt = self.positional_encoding(tgt)
 
-        output = self.transformer_decoder(tgt, memory, tgt_mask=tgt_mask, memory_mask=memory_mask)
+        output = self.transformer_decoder(tgt, memory, tgt_mask=tgt_mask, memory_mask=memory_mask, tgt_is_causal=True)
         output = self.out(output)
-        exists_output = torch.sigmoid(output[:, :, 0]).unsqueeze(-1)
-        tail_output = output[:, :, 1:]
-        output = torch.cat([exists_output, tail_output], dim=-1)
 
         return output

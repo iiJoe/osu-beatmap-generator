@@ -1,9 +1,8 @@
-from pydub import AudioSegment
 import os
 import json
 import constants
 import glob
-import numpy as np
+from utils import splice_audio
 
 # Split the osu files into the following sections
 # ['General', 'Editor', 'Metadata', 'Difficulty', 'Events', 'TimingPoints', 'Colours', 'HitObjects']
@@ -58,37 +57,16 @@ def hit_objects_dict(list):
 
   return hit_objects
 
-# 10.24s intervals
-def splice_audio(file_path, beatmap_id, interval_ms=constants.seq_length * 10):
-    _, file_name = os.path.split(file_path)
-    prefix, file_extension = os.path.splitext(file_name)
-    file_extension = file_extension[1:] # Remove leading dot
-    new_directory = constants.splice_directory
-
-    if not os.path.exists(new_directory):
-      os.mkdir(new_directory)
-
-    audio = AudioSegment.from_file(file_path)
-    audio_duration = len(audio)
-    audio_splices = []
-
-    for i in range(0, audio_duration, interval_ms):
-
-        chunk = audio[i:i + interval_ms]
-        chunk_name = os.path.join(new_directory, f"{beatmap_id}-{prefix}_{i // interval_ms}.{file_extension}")
-        chunk.export(chunk_name, format=file_extension)
-        audio_splices.append(chunk_name)
-
-    return audio_splices
-
 def preprocess():
     osu_folders = [name for name in os.listdir(constants.beatmaps_directory) if os.path.isdir(os.path.join(constants.beatmaps_directory, name))]
+
+    if not osu_folders:
+        print(f"No beatmap folders found in {constants.beatmaps_directory}.")
+        return
 
     beatmaps_count = 0
     splices_count = 0
     total_rows = []
-    if not osu_folders:
-        print("No beatmap folders found.")
 
     for beatmap_set_id in osu_folders:
 

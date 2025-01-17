@@ -37,12 +37,12 @@ def eval():
                 src, tgt = src.to(device, dtype=torch.float32, non_blocking=True), tgt.to(device, dtype=torch.float32, non_blocking=True)
 
                 _, target_len, _ = tgt.shape
-                padding_mask = (tgt[:, :, 0] == 1)
+                padding_mask = (tgt[:, :, 0] != 2)
                 tgt_mask = causal_mask(target_len, target_len)
                 predictions = model(src, tgt, tgt_mask=tgt_mask)
 
                 optimal_prediction = 0.5
-                exists_pred = (torch.sigmoid(predictions[:, :, 0][padding_mask]) > optimal_prediction).int()
+                exists_pred = (predictions[:, :, 0][padding_mask] > optimal_prediction).int()
                 exists_tgt = tgt[:, :, 0][padding_mask]
                 all_preds.append(exists_pred.cpu())
                 all_labels.append(exists_tgt.cpu())

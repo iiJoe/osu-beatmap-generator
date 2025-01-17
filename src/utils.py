@@ -1,8 +1,10 @@
-import numpy as np
-
 from models.osu_model import OsuModel
+from pydub import AudioSegment
 import os
 import torch
+import torch.nn.functional as F
+import numpy as np
+import librosa
 import json
 import constants
 
@@ -33,7 +35,8 @@ def labels_from_json(json_file):
 
         padded_attributes_list = []
         for attributes in attributes_list:
-            padded_attributes = attributes + [{constants.exists_key: 0, **{k: 0 for k in attributes[0] if k != constants.exists_key}}] * (max_len - len(attributes))
+            # Exists set to 2 to denote padded
+            padded_attributes = attributes + [{constants.exists_key: 2, **{k: 0 for k in attributes[0] if k != constants.exists_key}}] * (max_len - len(attributes))
             padded_attributes_list.append(padded_attributes)
 
         final_attributes_list = np.array([
@@ -69,3 +72,60 @@ def get_model():
 def causal_mask(batch_size, seq_len):
     mask = torch.triu(torch.ones(batch_size, seq_len, dtype=torch.bool), diagonal=1)
     return mask
+
+def audio_to_spectrogram_tensor(audio_file):
+  y, sr = librosa.load(audio_file, sr=None, duration=10.24)
+  n_fft = 256
+  hop_length = 441
+  S = librosa.stft(y, n_fft=n_fft, hop_length=hop_length)
+  S_db = librosa.amplitude_to_db(np.abs(S))
+
+  spectrogram = S_db[:128, :1024].T
+
+  spectrogram_tensor = torch.tensor(spectrogram, dtype=torch.float32)
+  padded_tensor = pad_spectrogram_tensor(spectrogram_tensor)
+  normalized_tensor = normalize_tensor(padded_tensor)
+
+  return normalized_tensor
+
+def pad_spectrogram_tensor(tensor, target_shape=(1024, 128)):
+    current_shape = tensor.shape
+
+    if current_shape == target_shape:
+        return tensor
+
+    padding_height = target_shape[0] - current_shape[0]
+
+    if padding_height > 0:
+        tensor = F.pad(tensor, (0, 0, 0, padding_height), mode='constant', value=0)
+
+    return tensor
+
+# Z-score Normalization
+def normalize_tensor(tensor):
+    mean = tensor.mean()
+    std = tensor.std()
+    return (tensor - mean) / (std * 2)
+
+# 10.24s intervals
+def splice_audio(file_path, beatmap_id, interval_ms=constants.seq_length * 10):
+    _, file_name = os.path.split(file_path)
+    prefix, file_extension = os.path.splitext(file_name)
+    file_extension = file_extension[1:] # Remove leading dot
+    new_directory = constants.splice_directory
+
+    if not os.path.exists(new_directory):
+      os.mkdir(new_directory)
+
+    audio = AudioSegment.from_file(file_path)
+    audio_duration = len(audio)
+    audio_splices = []
+
+    for i in range(0, audio_duration, interval_ms):
+
+        chunk = audio[i:i + interval_ms]
+        chunk_name = os.path.join(new_directory, f"{beatmap_id}-{prefix}_{i // interval_ms}.{file_extension}")
+        chunk.export(chunk_name, format=file_extension)
+        audio_splices.append(chunk_name)
+
+    return audio_splices
