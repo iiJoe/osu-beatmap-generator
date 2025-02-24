@@ -3,11 +3,11 @@ import os
 import torch
 
 import constants
-from utils import audio_to_spectrogram_tensor, get_model, causal_mask, splice_audio
+from utils import audio_to_spectrogram_tensor, get_model_infer, causal_mask, splice_audio
 
 def infer(src):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = get_model()
+    model = get_model_infer()
     model.eval()
     model.to(device)
 
@@ -18,7 +18,7 @@ def infer(src):
     tgt = tgt.expand(batch_size, 1, -1)
     for _ in range(constants.seq_length):
         _, target_len, _ = tgt.shape
-        tgt_mask = causal_mask(target_len, target_len)
+        tgt_mask = causal_mask(target_len)
         normalize_bounds = torch.tensor(constants.predictions_normalize, dtype=torch.float32)
 
         output = model(src, tgt, tgt_mask=tgt_mask)
@@ -48,9 +48,10 @@ def infer_all():
 
         notes = infer(spectrograms)
         for i in range(notes.size(0)):
+            note_count = 0
             for note in notes[i]:
-                print(f"e: {note[0].int()}, X: {note[1].int()}, y: {note[2].int()}, time: {(note[3].int() + i * constants.seq_length) * 10}")
-                if note[0] == 0:
+                print(f"{note[1].int()},{note[2].int()},{((note[3] + i * constants.seq_length) * 10).int()},1,{note[5].int()},0:0:0:0:")
+                if note[0] == 0 or note_count == 15:
                     break
 
             print(f"=== End of splice {i} ===")
