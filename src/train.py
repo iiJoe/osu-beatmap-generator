@@ -1,9 +1,10 @@
 from dataloader import AudioDataset
 import torch, torch.nn as nn
 from torch.utils.data import DataLoader
+from prodigyopt import Prodigy
 
 import constants
-from utils import get_model, causal_mask, labels_from_json
+from utils import get_model, collate_fn
 from eval import validate
 
 
@@ -13,70 +14,72 @@ def evaluate(model, best_val_loss):
     if (avg_val_loss < best_val_loss):
         torch.save(model.state_dict(), constants.best_model_path)
         best_val_loss = avg_val_loss
-        model.train()
+
     return best_val_loss
 
+
 def train():
-    file_paths, file_labels = labels_from_json(constants.training_labels_file)
+    batch_size = constants.batch_size
+    best_val_loss = float("inf")
+    num_epochs = 15
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    batch_size = constants.batch_size
-
     print("=== Training Start ===")
+    print(f"Device used is : {device}")
 
-    model = get_model()
-    model.to(device)
+    model = get_model().to(device)
     model.train()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
-    mse_criterion = nn.MSELoss(reduction="none")
-    num_epochs = 5
-    best_val_loss = float("inf")
+    optimizer = Prodigy(model.parameters(), lr=1.,slice_p=1, weight_decay=0, d_coef=0.1)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
+    bce_criterion = nn.BCELoss(reduction="mean")
+    l1_criterion = nn.L1Loss(reduction="mean")
+
+    dataset = AudioDataset(constants.training_labels_file)
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn, drop_last=True)
 
     # Split data set to train batch by batch
     for epoch in range(num_epochs):
-        for i in range(0, len(file_paths), batch_size):
-            print(f"Epoch {epoch + 1} - Batch {i // batch_size + 1} Start")
-            end_idx = min(i+batch_size, len(file_paths))
-            print(f"Processing records from index {i} to {end_idx}")
+        for i, (src, tgt) in enumerate(data_loader):
+            print(f"Epoch {epoch + 1} - Batch {i + 1} Start")
+            src = src.to(device)
+            tgt = tgt.to(device)
 
-            dataset = AudioDataset(file_paths[i:end_idx], file_labels[i:end_idx])
-            data_loader = DataLoader(dataset, batch_size=end_idx - i, shuffle=True)
+            spec_pad_mask = (src.abs().sum(dim=1) == 0)
+            hit_pad_mask = (tgt == 0).all(dim=2)
+            hit_pad_mask[:, 0] = False
 
-            running_loss = 0.0
-            for src, tgt in data_loader:
-                src, tgt = src.to(device, dtype=torch.float32, non_blocking=True), tgt.to(device, dtype=torch.float32, non_blocking=True)
-                bce_weights = torch.where(tgt[:, :, 0] != 2, 1, 0).to(device)  # Check for those labelled as 2, set weights to 0
-                mse_weights = bce_weights.unsqueeze(-1).expand_as(tgt[:, :, 1:])
-                mse_weights[:, :, 2] = mse_weights[:, :, 2] * constants.time_weight
-                bce_weights[tgt[:, :, 0] == 0] = constants.end_token_weight
-                tgt[:, :, 0][tgt[:, :, 0] == 2] = 0  # Change those with exists values of 2 and change to 0 for bce
-                normalize_bounds = torch.tensor(constants.predictions_normalize, dtype=torch.float32)
+            optimizer.zero_grad()
+            output = model(src, tgt, spec_pad_mask=spec_pad_mask, hit_pad_mask=hit_pad_mask)
 
-                _, target_len, _ = tgt.shape
-                tgt_mask = causal_mask(target_len)
-                output = model(src, tgt, tgt_mask=tgt_mask)
-                tgt = tgt.clone()
-                tgt[:, :, 1:] = tgt[:, :, 1:] / normalize_bounds
+            hit_pad_mask = (~hit_pad_mask).float().unsqueeze(-1)
+            output = output * hit_pad_mask
+            tgt = tgt * hit_pad_mask
 
-                bce_criterion = nn.BCELoss(weight=bce_weights, reduction="mean")
-                bce_loss = bce_criterion(output[:, :, 0], tgt[:, :, 0])
-                mse_loss = (mse_criterion(output[:, :, 1:], tgt[:, :, 1:]) * mse_weights).sum() / mse_weights.sum()
-                total_loss = bce_loss + mse_loss
-                print(f"BCE Loss: {bce_loss}")
-                print(f"MSE Loss: {mse_loss}")
-                print(f"Total Loss: {total_loss}")
+            end_token_mask = torch.where(tgt[:, 1:, 0] == 0, constants.end_token_weight, 1.0).to(device)
+            output[:, :-1, 0] *= end_token_mask
+            tgt[:, 1:, 0] *= end_token_mask
 
-                optimizer.zero_grad()
-                total_loss.backward()
-                optimizer.step()
-                running_loss += total_loss.item()
+            p_weights = torch.tensor(constants.predictions_weights, dtype=torch.float32).to(device)
+            output[:, :-1, 1:] *= p_weights
+            tgt[:, 1:, 1:] *= p_weights
 
-            if (i // batch_size + 1) % 20 == 0:
+            bce_loss = bce_criterion(output[:, :-1, 0], tgt[:, 1:, 0])
+            l1_loss = l1_criterion(output[:, :-1, 1:], tgt[:, 1:, 1:])
+
+            print(f"BCE Loss: {bce_loss}")
+            print(f"L1 Loss: {l1_loss}")
+
+            bce_loss.backward(retain_graph=True)
+            l1_loss.backward()
+            optimizer.step()
+
+            if (i + 1) % 10 == 0:
                 best_val_loss = evaluate(model, best_val_loss)
+                model.train()
 
-            print(f"Batch {i // batch_size + 1} End")
+            print(f"Epoch {epoch + 1} - Batch {i + 1} End")
 
-        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(data_loader):.4f}")
+        scheduler.step()
 
     best_val_loss = evaluate(model, best_val_loss)
     torch.save(model.state_dict(), constants.trained_model_path)

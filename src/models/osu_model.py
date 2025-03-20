@@ -4,58 +4,59 @@ import torch.nn as nn
 
 from .positional_encoding import PositionalEncoding
 
+
 class OsuModel(nn.Module):
 
-    def __init__(self, nhead=8, num_encoder_layers=6, num_decoder_layers=6, dim_feedforward=1024,dropout=0.1, max_seq_len=1024):
+    def __init__(self, nhead=8, n_layers=8, d_model=1024, dim_feedforward=2048, dropout=0.1):
         super(OsuModel, self).__init__()
-        input_dim = constants.input_dim
-        output_dim = constants.cnn_output_dim
 
-        self.cnn_encoder = nn.Sequential(
-            nn.Conv1d(input_dim, input_dim, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv1d(input_dim, output_dim, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv1d(output_dim, output_dim, kernel_size=3, padding=1)
-        )
-
-        self.positional_encoding = PositionalEncoding(output_dim, dropout, max_seq_len)
+        self.positional_encoding = PositionalEncoding(d_model, 512)
+        self.src_fc = nn.Linear(constants.input_dim, d_model)
 
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=output_dim,
+            d_model=d_model,
             nhead=nhead,
             batch_first=True,
             dim_feedforward=dim_feedforward,
             dropout=dropout
         )
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_encoder_layers)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
 
-        self.note_embedding = nn.Linear(constants.predictions_dim, output_dim, dtype=torch.float32)
+        self.positional_encoding_tgt = PositionalEncoding(d_model, 120)
+        self.note_embedding = nn.Linear(constants.predictions_dim, d_model, dtype=torch.float32)
 
         decoder_layer = nn.TransformerDecoderLayer(
-            d_model=output_dim,
+            d_model=d_model,
             nhead=nhead,
             batch_first=True,
             dim_feedforward=dim_feedforward,
             dropout=dropout
         )
-        self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_decoder_layers)
+        self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=n_layers)
+
         self.out = nn.Sequential(
-            nn.Linear(output_dim, constants.predictions_dim, dtype=torch.float32),
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, constants.predictions_dim, dtype=torch.float32),
             nn.Sigmoid()
         )
 
-    def forward(self, src, tgt, src_mask=None, tgt_mask=None, memory_mask=None):
-        src = src.permute(0, 2, 1)
-        src = self.cnn_encoder(src)
-        src = src.permute(0, 2, 1)
+    def forward(self, src, tgt, spec_pad_mask=None, hit_pad_mask=None):
+        spec_pad_mask = spec_pad_mask.to(src.device)
+        hit_pad_mask = hit_pad_mask.to(tgt.device)
+
+        src = torch.permute(src, (0, 2, 1))
+        src = self.src_fc(src)
         src = self.positional_encoding(src)
-        memory = self.transformer_encoder(src, mask=src_mask)
+        memory = self.transformer_encoder(src, src_key_padding_mask=spec_pad_mask)
 
+        from utils import causal_mask
+
+        tgt_mask = causal_mask(tgt.shape[1]).to(tgt.device)
         tgt = self.note_embedding(tgt)
-        tgt = self.positional_encoding(tgt)
+        tgt = self.positional_encoding_tgt(tgt)
+        tgt = self.transformer_decoder(tgt, memory, tgt_mask=tgt_mask, memory_key_padding_mask=spec_pad_mask, tgt_key_padding_mask=hit_pad_mask)
 
-        output = self.transformer_decoder(tgt, memory, tgt_mask=tgt_mask, memory_mask=memory_mask, tgt_is_causal=True)
-        output = self.out(output)
+        output = self.out(tgt)
 
         return output

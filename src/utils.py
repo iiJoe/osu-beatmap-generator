@@ -2,87 +2,47 @@ from models.osu_model import OsuModel
 from pydub import AudioSegment
 import os
 import torch
-import torch.nn.functional as F
-import numpy as np
 import librosa
 import json
 import constants
 
 
-# Deprecated, used for old model
-def labels_from_csv(csv_file):
-    data = np.genfromtxt(csv_file, delimiter=",", dtype=str, encoding='utf-8')
-    file_paths = data[:, 0]
-    labels = data[:, 1:].astype(float)
-
-    return file_paths, labels
-
-
 def labels_from_json(json_file):
     with open(json_file) as json_data:
-        max_len = 0
         file_paths = []
         attributes_list = []
-        empty_token = {
-            constants.exists_key: 2,
-            **{k: 0 for k in constants.predictions_keys if k != constants.exists_key}
-        }
 
         data = json.load(json_data)
+
         for splice in data:
             attributes = splice[constants.json_attributes_key]
             file_paths.append(splice[constants.json_file_path_key])
             for i in range(len(attributes)):
                 attributes[i][constants.exists_key] = 1 if i < len(attributes) - 1 else 0
-            max_len = max(max_len, len(attributes))
             attributes_list.append(attributes)
 
-        padded_attributes_list = []
-        for attributes in attributes_list:
-            # Exists set to 2 to denote padded
-            padded_attributes = attributes + [empty_token] * (max_len - len(attributes))
-            padded_attributes_list.append(padded_attributes)
-
-        final_attributes_list = np.array([
+        final_attributes_list = [
             [[
                 attr[key] for key in constants.predictions_keys
             ]
              for attr in attrs]
-            for attrs in padded_attributes_list])
+            for attrs in attributes_list]
         return file_paths, final_attributes_list
 
 
-def get_model():
+def get_model(path=constants.trained_model_path):
     print("Retrieving model...")
-    model = OsuModel(
-        nhead=8,
-        num_encoder_layers=6,
-        num_decoder_layers=6,
-        dim_feedforward=1024,
-        dropout=0.1
-    )
-    if os.path.exists(constants.trained_model_path):
-        print("Trained model exists. Loading saved state")
-        checkpoint = torch.load(constants.trained_model_path)
+    model = OsuModel()
+    if os.path.exists(path):
+        print("Model exists. Loading saved state")
+        checkpoint = torch.load(path, weights_only=True)
         model.load_state_dict(checkpoint)
 
     return model
+
 
 def get_model_infer():
-    print("Retrieving model...")
-    model = OsuModel(
-        nhead=8,
-        num_encoder_layers=6,
-        num_decoder_layers=6,
-        dim_feedforward=1024,
-        dropout=0.1
-    )
-    if os.path.exists(constants.best_model_path):
-        print("Loading best model")
-        checkpoint = torch.load(constants.best_model_path)
-        model.load_state_dict(checkpoint)
-
-    return model
+    return get_model(constants.best_model_path)
 
 
 def causal_mask(seq_len):
@@ -91,40 +51,12 @@ def causal_mask(seq_len):
 
 
 def audio_to_spectrogram_tensor(audio_file):
-    y, sr = librosa.load(audio_file, sr=None, duration=10.24)
-    n_fft = 256
-    hop_length = 441
-    S = librosa.stft(y, n_fft=n_fft, hop_length=hop_length)
-    S_db = librosa.amplitude_to_db(np.abs(S))
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    y, sr = librosa.load(audio_file, sr=22050)
+    spectrogram = librosa.feature.melspectrogram(y=y, sr=sr)
+    spectrogram = torch.tensor(spectrogram, dtype=torch.float32).to(device)
 
-    spectrogram = S_db[:128, :1024].T
-
-    spectrogram_tensor = torch.tensor(spectrogram, dtype=torch.float32)
-    padded_tensor = pad_spectrogram_tensor(spectrogram_tensor)
-    normalized_tensor = normalize_tensor(padded_tensor)
-
-    return normalized_tensor
-
-
-def pad_spectrogram_tensor(tensor, target_shape=(1024, 128)):
-    current_shape = tensor.shape
-
-    if current_shape == target_shape:
-        return tensor
-
-    padding_height = target_shape[0] - current_shape[0]
-
-    if padding_height > 0:
-        tensor = F.pad(tensor, (0, 0, 0, padding_height), mode='constant', value=0)
-
-    return tensor
-
-
-# Z-score Normalization
-def normalize_tensor(tensor):
-    mean = tensor.mean()
-    std = tensor.std()
-    return (tensor - mean) / (std * 2)
+    return spectrogram
 
 
 # 10.24s intervals
@@ -149,3 +81,18 @@ def splice_audio(file_path, beatmap_id, interval_ms=constants.seq_length * 10):
         audio_splices.append(chunk_name)
 
     return audio_splices
+
+
+def collate_fn(batch):
+    spectrograms, targets = zip(*batch)
+
+    padded_spectrograms = torch.stack([
+        torch.nn.functional.pad(spectrogram, (0, max(0, 512 - spectrogram.shape[1])), value=0)[:, :512]
+        for spectrogram in spectrograms
+    ])
+    targets = torch.stack([
+        torch.nn.functional.pad(target, (0, 0, 0, max(0, 120 - target.shape[0])), value=0)[:120]
+        for target in targets
+    ])
+
+    return padded_spectrograms, targets

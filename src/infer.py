@@ -3,34 +3,37 @@ import os
 import torch
 
 import constants
-from utils import audio_to_spectrogram_tensor, get_model_infer, causal_mask, splice_audio
+from utils import audio_to_spectrogram_tensor, get_model_infer, splice_audio
+
 
 def infer(src):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = get_model_infer()
+    model = get_model_infer().to(device)
     model.eval()
-    model.to(device)
+    with torch.no_grad():
+        src = src.to(device, dtype=torch.float32)
 
-    src.to(device, dtype=torch.float32)
-    tgt = torch.tensor([[[1.0, 0.0, 0.0, 0.0, 0.0, 0.0]]], device=device)
-    batch_size = src.size(0)
+        batch_size = src.size(0)
+        tgt = torch.tensor([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]], device=device)
+        tgt = tgt.expand(batch_size, 1, -1)
 
-    tgt = tgt.expand(batch_size, 1, -1)
-    for _ in range(constants.seq_length):
-        _, target_len, _ = tgt.shape
-        tgt_mask = causal_mask(target_len)
-        normalize_bounds = torch.tensor(constants.predictions_normalize, dtype=torch.float32)
+        for _ in range(120):
+            spec_pad_mask = (src.abs().sum(dim=1) == 0)
+            hit_pad_mask = (tgt == 0).all(dim=2)
+            hit_pad_mask[:, 0] = False
 
-        output = model(src, tgt, tgt_mask=tgt_mask)
-        output[:, -1, 0] = (output[:, -1, 0] > 0.5).float()
-        output[:, -1, 1:] = output[:, -1, 1:] * normalize_bounds
-        tgt = torch.cat((tgt, output[:, -1:].detach()), dim=1)
+            output = model(src, tgt, spec_pad_mask=spec_pad_mask, hit_pad_mask=hit_pad_mask)
+            output[:, -1, 0] = (output[:, -1, 0] > 0.5).float()
+            tgt = torch.cat((tgt, output[:, -1, :].unsqueeze(1)), dim=1)
+            if torch.all(output[:, -1:, 0] == 0):
+                break
 
-        if torch.all(output[:, -1:, 0] == 0):
-            break
+        normalize_bounds = torch.tensor(constants.predictions_normalize, dtype=torch.float32).to(device)
+        tgt = tgt[:, 1:, :]  # Remove the start token
+        tgt[:, :, 1:] = tgt[:, :, 1:] * normalize_bounds
 
-    tgt = tgt[:, 1:, :] # Remove the start token
-    return tgt
+        return tgt
+
 
 def infer_all():
     dir = constants.audio_directory
@@ -44,14 +47,20 @@ def infer_all():
         audio_directory = dir + "/" + file
         timestamp = round(time.time() * 1000)
         spliced_audio_paths = splice_audio(audio_directory, timestamp)
-        spectrograms = torch.stack([audio_to_spectrogram_tensor(splice) for splice in spliced_audio_paths])
+        spectrograms = torch.stack([
+            torch.nn.functional.pad(
+                spec,
+                (0, max(0, 512 - spec.shape[1])),
+                value=0
+            )[:, :512]
+            for spec in (audio_to_spectrogram_tensor(splice) for splice in spliced_audio_paths)
+        ])
 
         notes = infer(spectrograms)
         for i in range(notes.size(0)):
-            note_count = 0
             for note in notes[i]:
                 print(f"{note[1].int()},{note[2].int()},{((note[3] + i * constants.seq_length) * 10).int()},1,{note[5].int()},0:0:0:0:")
-                if note[0] == 0 or note_count == 15:
+                if note[0] == 0:
                     break
 
             print(f"=== End of splice {i} ===")
