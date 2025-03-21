@@ -78,7 +78,7 @@ def preprocess():
         osu_files = glob.glob(os.path.join(new_directory, '*.osu'))
 
         for new_file in osu_files:
-            beatmaps_count += 1
+
             file_sections = parse_sections(new_file)
             general_data = data_from_section(file_sections["General"])
             editor_data = data_from_section(file_sections["Editor"])
@@ -86,6 +86,11 @@ def preprocess():
             difficulty_data = data_from_section(file_sections["Difficulty"])
             hit_objects_data = hit_objects_dict(file_sections["HitObjects"])
 
+            # Only consider osu! beatmaps
+            if general_data["Mode"] != "0":
+                continue
+
+            beatmaps_count += 1
             beatmap_id = meta_data["BeatmapID"]
 
             # Splicing audio into intervals
@@ -110,26 +115,26 @@ def preprocess():
                     if not tpe:
                         tpe = 1
 
-                        attributes.append({
-                            "x" : int(hit_object["x"]),
-                            "y" : int(hit_object["y"]),
-                            "time": int(hit_object["time"]) % hit_timing_delimiter // 10,
-                            "type": tpe,
-                            "hitSound": int(hit_object["hitSound"])
-                        })
+                    attributes.append({
+                        "x" : int(hit_object["x"]),
+                        "y" : int(hit_object["y"]),
+                        "time": int(hit_object["time"]) % hit_timing_delimiter // 10,
+                        "type": tpe,
+                        "hitSound": int(hit_object["hitSound"])
+                    })
 
-                        note_index += 1
-                        if note_index == len(hit_objects_data):
-                            break
+                    note_index += 1
+                    if note_index == len(hit_objects_data):
+                        break
 
-                        hit_object = hit_objects_data[note_index]
+                    hit_object = hit_objects_data[note_index]
 
-                        data = {
-                            constants.json_file_path_key: spliced_audio_paths[i],
-                            constants.json_attributes_key: attributes
-                        }
+                    data = {
+                        constants.json_file_path_key: spliced_audio_paths[i],
+                        constants.json_attributes_key: attributes
+                    }
 
-                        total_rows.append(data)
+                    total_rows.append(data)
 
     if total_rows:
         split_delimiter = int(len(total_rows) * 0.8)
